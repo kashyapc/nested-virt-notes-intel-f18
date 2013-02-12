@@ -67,6 +67,6 @@ virt-install --connect=qemu:///system \
     --os-variant fedora18 \
     --cpuset auto \
     --hvm \
-    --location=http://foo.bar.com/pub/fedora/linux/releases/18/Fedora/x86_64/os/ \
+    --location=http://download.fedoraproject.org/pub/fedora/linux/releases/18/Fedora/x86_64/os  \
     --nographics 
 

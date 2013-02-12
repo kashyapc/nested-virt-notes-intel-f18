@@ -1,0 +1,316 @@
+=> Validate the host to run KVM: <=
+#-----------------------------------------------------------#
+[root@phy-host ~]# virt-host-validate 
+  QEMU: Checking for hardware virtualization                                 : PASS
+  QEMU: Checking for device /dev/kvm                                         : PASS
+  QEMU: Checking for device /dev/vhost-net                                   : PASS
+  QEMU: Checking for device /dev/net/tun                                     : PASS
+   LXC: Checking for Linux >= 2.6.26                                         : PASS
+[root@phy-host ~]# 
+#-----------------------------------------------------------#
+
+
+=> Virt Host info: <=
+#-----------------------------------------------------------#
+[root@phy-host ~]# virsh nodeinfo
+CPU model:           x86_64
+CPU(s):              4
+CPU frequency:       1995 MHz
+CPU socket(s):       1
+Core(s) per socket:  4
+Thread(s) per core:  1
+NUMA cell(s):        1
+Memory size:         10242960 KiB
+
+[root@phy-host ~]# 
+#-----------------------------------------------------------#
+
+
+=> Version Info on physical host (L0): <=
+#-----------------------------------------------------------#
+[root@phy-host ~]# uname -r ; arch ; rpm -q qemu-kvm libvirt 
+3.6.7-5.fc18.x86_64
+x86_64
+qemu-kvm-1.3.0-9.fc18.x86_64
+libvirt-1.0.2-1.fc18.x86_64
+[root@phy-host ~]# 
+#-----------------------------------------------------------#
+
+
+=> Confirm if Nested Virt is enabled: <=
+#-----------------------------------------------------------#
+[root@phy-host ~]# cat /sys/module/kvm_intel/parameters/nested 
+Y
+#-----------------------------------------------------------#
+[root@phy-host ~]# modinfo kvm_intel | grep -i nested
+parm:           nested:bool
+#-----------------------------------------------------------#
+[root@phy-host ~]# systool -m kvm_intel -v   | grep -i nested
+    nested              = "Y"
+[root@phy-host ~]# 
+#-----------------------------------------------------------#
+
+
+=> Regular guest info <=
+#-----------------------------------------------------------#
+[root@phy-host ~]# virsh dominfo regular-guest-f18
+Id:             21
+Name:           regular-guest-f18
+UUID:           9a7fd95b-7b4c-743b-90de-fa186bb5c85f
+OS Type:        hvm
+State:          running
+CPU(s):         4
+CPU time:       36.7s
+Max memory:     4194304 KiB
+Used memory:    4194304 KiB
+Persistent:     yes
+Autostart:      disable
+Managed save:   no
+Security model: selinux
+Security DOI:   0
+Security label: system_u:system_r:svirt_t:s0:c51,c255 (permissive)
+
+[root@phy-host ~]# 
+
+#-----------------------------------------------------------#
+
+
+=> Enable VMX in the regular-guest, by adding the host cpu model info in its libvirt xml file <=
+#-----------------------------------------------------------#
+[root@phy-host ~]# virsh capabilities | virsh cpu-baseline /dev/stdin
+<cpu mode='custom' match='exact'>
+  <model fallback='allow'>Penryn</model>
+  <vendor>Intel</vendor>
+  <feature policy='require' name='osxsave'/>
+  <feature policy='require' name='xsave'/>
+  <feature policy='require' name='dca'/>
+  <feature policy='require' name='pdcm'/>
+  <feature policy='require' name='xtpr'/>
+  <feature policy='require' name='tm2'/>
+  <feature policy='require' name='vmx'/>
+  <feature policy='require' name='ds_cpl'/>
+  <feature policy='require' name='monitor'/>
+  <feature policy='require' name='dtes64'/>
+  <feature policy='require' name='pbe'/>
+  <feature policy='require' name='tm'/>
+  <feature policy='require' name='ht'/>
+  <feature policy='require' name='ss'/>
+  <feature policy='require' name='acpi'/>
+  <feature policy='require' name='ds'/>
+  <feature policy='require' name='vme'/>
+</cpu>
+
+[root@phy-host ~]# 
+#-----------------------------------------------------------#
+
+=> Edit the guest xml file (virsh edit regular-guest-f18, update the CPU parameters to enable vmx extensions <=
+#-----------------------------------------------------------#
+[root@phy-host ~]# virsh dumpxml regular-guest-f18 | grep -A3  \<cpu
+  <cpu mode='custom' match='exact'>
+    <model fallback='allow'>core2duo</model>
+    <feature policy='require' name='vmx'/>
+  </cpu>
+[root@phy-host ~]# 
+#-----------------------------------------------------------#
+
+
+=>  Ensure KVM character device is present in the regular-guest/ guest hypervisor <=
+#-----------------------------------------------------------#
+[root@regular-guest-f18 ~]# file /dev/kvm 
+/dev/kvm: character special
+[root@regular-guest-f18 ~]# 
+#-----------------------------------------------------------#
+
+=>As we enabled vmx in the guest-hypervisor, let’s confirm that vmx is exposed in the emulated CPU by ensuring qemu-kvm is invoked with 'vmx' extensions by grepping the qemu-kvm command line on the host <=
+#-----------------------------------------------------------#
+[root@phy-host ~]# ps -ef | grep qemu-kvm | grep regular-guest-f18
+qemu     15768     1  7 13:33 ?        00:01:06 /usr/bin/qemu-kvm -name regular-guest-f18 -S -M pc-1.3 -cpu core2duo,+vmx -enable-kvm -m 4096 -smp 4,sockets=4,cores=1,threads=1 -uuid 9a7fd95b-7b4c-743b-90de-fa186bb5c85f -nographic -no-user-config -nodefaults -chardev socket,id=charmonitor,path=/var/lib/libvirt/qemu/regular-guest-f18.monitor,server,nowait -mon chardev=charmonitor,id=monitor,mode=control -rtc base=utc -no-shutdown -device piix3-usb-uhci,id=usb,bus=pci.0,addr=0x1.0x2 -drive file=/export/vmimgs/regular-guest-f18.qcow2,if=none,id=drive-virtio-disk0,format=qcow2,cache=none -device virtio-blk-pci,scsi=off,bus=pci.0,addr=0x4,drive=drive-virtio-disk0,id=virtio-disk0,bootindex=1 -netdev tap,fd=25,id=hostnet0,vhost=on,vhostfd=26 -device virtio-net-pci,netdev=hostnet0,id=net0,mac=52:54:00:a6:ff:96,bus=pci.0,addr=0x3 -chardev pty,id=charserial0 -device isa-serial,chardev=charserial0,id=serial0 -device usb-tablet,id=input0 -device virtio-balloon-pci,id=balloon0,bus=pci.0,addr=0x5
+[root@phy-host ~]# 
+#-----------------------------------------------------------#
+
+=> Set the hostname inside the regular guest <=
+#-----------------------------------------------------------#
+[root@regular-guest-f18 ~]# hostnamectl set-hostname regular-guest.foo.bar.com
+#-----------------------------------------------------------#
+
+
+=> Install virt packages inside the regular guest <=
+#-----------------------------------------------------------#
+[root@regular-guestfoobarcom ~]# yum install libvirt-daemon-kvm libvirt-daemon-config-network libvirt-daemon-config-nwfilter python-virtinst -y
+#-----------------------------------------------------------#
+
+
+=> Version info inside the regular guest <=
+#-----------------------------------------------------------#
+[root@regular-guestfoobarcom ~]# cat /etc/redhat-release ; uname -r ; arch ; rpm -q qemu-kvm libvirt
+Fedora release 18 (Spherical Cow)
+3.6.10-4.fc18.x86_64
+x86_64
+qemu-kvm-1.2.2-6.fc18.x86_64
+package libvirt is not installed
+[root@regular-guestfoobarcom ~]# 
+#-----------------------------------------------------------#
+
+=> Start libvirtd inside regular guest <=
+#-----------------------------------------------------------#
+[root@regular-guestfoobarcom ~]# systemctl start libvirtd.service
+[root@regular-guestfoobarcom ~]# systemctl status libvirtd.service                                                                                                                                       
+libvirtd.service - Virtualization daemon
+          Loaded: loaded (/usr/lib/systemd/system/libvirtd.service; enabled)
+          Active: active (running) since Tue, 2013-02-12 03:16:00 EST; 15s ago
+        Main PID: 1222 (libvirtd)
+          CGroup: name=systemd:/system/libvirtd.service
+                  ├ 1222 /usr/sbin/libvirtd
+                  └ 1272 /sbin/dnsmasq --strict-order --local=// --domain-needed --pid-file=/var/run/libvirt/network/default.pid --conf-file= --except-interface lo --bind-dynamic --interface virbr0 --dhcp-...
+
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq-dhcp[1272]: DHCP, IP range 192.168.122.2 -- 192.168.122.254, lease time 1h
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq[1272]: using local addresses only for unqualified names
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq[1272]: reading /etc/resolv.conf
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq[1272]: using nameserver xx.yy.zz.1#53
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq[1272]: using nameserver xx.yy.zzz.201#53
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq[1272]: using nameserver xx.yy.zzz.89#53
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq[1272]: using local addresses only for unqualified names
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq[1272]: read /etc/hosts - 2 addresses
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq[1272]: read /var/lib/libvirt/dnsmasq/default.addnhosts - 0 addresses
+Feb 12 03:16:03 regular-guestfoobarcom dnsmasq-dhcp[1272]: read /var/lib/libvirt/dnsmasq/default.hostsfile
+[root@regular-guestfoobarcom ~]# 
+#-----------------------------------------------------------#
+
+
+=> Attempt to create a nested guest.  <=
+#-----------------------------------------------------------#
+[root@regular-guestfoobarcom nested-test]# ./create-nested-guest.bash
+#-----------------------------------------------------------#
+
+=> It boots successfully <=
+#-----------------------------------------------------------#
+Fedora release 18 (Spherical Cow)
+Kernel 3.6.10-4.fc18.x86_64 on an x86_64 (ttyS0)
+
+localhost login: [   39.135087] nf_conntrack version 0.5.0 (16384 buckets, 65536 max)
+
+Fedora release 18 (Spherical Cow)
+Kernel 3.6.10-4.fc18.x86_64 on an x86_64 (ttyS0)
+
+localhost login: root
+Password: 
+[root@localhost ~]# 
+
+#-----------------------------------------------------------#
+[root@phy-host ~]# virsh list
+ Id    Name                           State
+----------------------------------------------------
+ 22    regular-guest-f18              running
+
+[root@phy-host ~]# 
+
+[root@regular-guestfoobarcom ~]# virsh list
+ Id    Name                           State
+----------------------------------------------------
+ 2     nested-guest-f18               running
+
+[root@regular-guestfoobarcom ~]# 
+#-----------------------------------------------------------#
+[root@phy-host ~]# virsh list
+ Id    Name                           State
+----------------------------------------------------
+ 1     zoml6                          running
+ 18    devstack-1                     running
+ 22    regular-guest-f18              running
+
+[root@phy-host ~]# virsh console regular-guest-f18
+Connected to domain regular-guest-f18
+Escape character is ^]
+
+Fedora release 18 (Spherical Cow)
+Kernel 3.6.10-4.fc18.x86_64 on an x86_64 (ttyS0)
+
+regular-guestfoobarcom login: root
+Password: 
+Last login: Tue Feb 12 03:54:37 from phy-host.foo.bar.com
+[root@regular-guestfoobarcom ~]# 
+
+#-----------------------------------------------------------#
+
+#-----------------------------------------------------------#
+[root@regular-guestfoobarcom ~]# ps -ef | grep qemu-kvm | grep nested-guest-f18
+qemu      2246     1 14 03:39 ?        00:02:08 /usr/bin/qemu-kvm -name nested-guest-f18 -S -M pc-1.2 -enable-kvm -m 2048 -smp 2,sockets=2,cores=1,threads=1 -uuid 3cfb386b-0401-ffc2-a435-5e20c5ef3702 -nographic -no-user-config -nodefaults -chardev socket,id=charmonitor,path=/var/lib/libvirt/qemu/nested-guest-f18.monitor,server,nowait -mon chardev=charmonitor,id=monitor,mode=control -rtc base=utc -no-shutdown -device piix3-usb-uhci,id=usb,bus=pci.0,addr=0x1.0x2 -drive file=/export/vmimgs/nested-guest-f18.qcow2,if=none,id=drive-virtio-disk0,format=qcow2,cache=none -device virtio-blk-pci,scsi=off,bus=pci.0,addr=0x4,drive=drive-virtio-disk0,id=virtio-disk0,bootindex=1 -netdev tap,fd=23,id=hostnet0,vhost=on,vhostfd=24 -device virtio-net-pci,netdev=hostnet0,id=net0,mac=52:54:00:5d:44:ae,bus=pci.0,addr=0x3 -chardev pty,id=charserial0 -device isa-serial,chardev=charserial0,id=serial0 -device usb-tablet,id=input0 -device virtio-balloon-pci,id=balloon0,bus=pci.0,addr=0x5
+#-----------------------------------------------------------#
+
+#-----------------------------------------------------------#
+[root@regular-guestfoobarcom ~]# service libvirtd status
+Redirecting to /bin/systemctl status  libvirtd.service
+libvirtd.service - Virtualization daemon
+          Loaded: loaded (/usr/lib/systemd/system/libvirtd.service; enabled)
+          Active: active (running) since Tue, 2013-02-12 03:25:41 EST; 29min ago
+        Main PID: 1474 (libvirtd)
+          CGroup: name=systemd:/system/libvirtd.service
+                  ├ 1272 /sbin/dnsmasq --strict-order --local=// --domain-needed --pid-file=/var/run/libvirt/network/default.pid --conf-file= --except-interface lo --bind-dynamic --interface virbr0 --dhcp-...
+                  ├ 1474 /usr/sbin/libvirtd
+                  └ 2246 /usr/bin/qemu-kvm -name nested-guest-f18 -S -M pc-1.2 -enable-kvm -m 2048 -smp 2,sockets=2,cores=1,threads=1 -uuid 3cfb386b-0401-ffc2-a435-5e20c5ef3702 -nographic -no-user-config -...
+
+Feb 12 03:39:31 regular-guestfoobarcom libvirtd[1474]: 2013-02-12 08:39:31.285+0000: 2217: debug : virFileClose:72 : Closed fd 13
+Feb 12 03:39:31 regular-guestfoobarcom libvirtd[1474]: 2013-02-12 08:39:31.285+0000: 2217: debug : virFileClose:72 : Closed fd 14
+Feb 12 03:39:31 regular-guestfoobarcom libvirtd[1474]: 2013-02-12 08:39:31.285+0000: 2217: debug : virFileClose:72 : Closed fd 15
+Feb 12 03:39:31 regular-guestfoobarcom libvirtd[1474]: 2013-02-12 08:39:31.285+0000: 2217: debug : virFileClose:72 : Closed fd 16
+Feb 12 03:39:31 regular-guestfoobarcom libvirtd[1474]: 2013-02-12 08:39:31.285+0000: 2217: debug : virFileClose:72 : Closed fd 17
+Feb 12 03:39:31 regular-guestfoobarcom libvirtd[1474]: 2013-02-12 08:39:31.285+0000: 2217: debug : virFileClose:72 : Closed fd 18
+Feb 12 03:40:43 regular-guestfoobarcom dnsmasq-dhcp[1272]: DHCPDISCOVER(virbr0) 52:54:00:5d:44:ae
+Feb 12 03:40:43 regular-guestfoobarcom dnsmasq-dhcp[1272]: DHCPOFFER(virbr0) 192.168.122.184 52:54:00:5d:44:ae
+Feb 12 03:40:43 regular-guestfoobarcom dnsmasq-dhcp[1272]: DHCPREQUEST(virbr0) 192.168.122.184 52:54:00:5d:44:ae
+Feb 12 03:40:43 regular-guestfoobarcom dnsmasq-dhcp[1272]: DHCPACK(virbr0) 192.168.122.184 52:54:00:5d:44:ae
+[root@regular-guestfoobarcom ~]# 
+#-----------------------------------------------------------#
+
+
+=> Get the IP address of nested guest <=
+
+NOTE: The nested guest is using libvirt's default bridge 'virbr0'
+#-----------------------------------------------------------#
+[root@regular-guestfoobarcom ~]# virt-cat nested-guest-f18 /var/log/messages | grep 'dhclient.*bound to' 
+Feb 12 03:40:41 localhost dhclient[571]: bound to 192.168.122.184 -- renewal in 1759 seconds.
+Feb 12 04:11:15 localhost dhclient[584]: bound to 192.168.122.184 -- renewal in 1404 seconds.
+[root@regular-guestfoobarcom ~]# 
+#-----------------------------------------------------------#
+[root@localhost ~]# ifconfig 
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 192.168.122.184  netmask 255.255.255.0  broadcast 192.168.122.255
+        inet6 fe80::5054:ff:fe5d:44ae  prefixlen 64  scopeid 0x20<link>
+        ether 52:54:00:5d:44:ae  txqueuelen 1000  (Ethernet)
+        RX packets 19534  bytes 27096240 (25.8 MiB)
+        RX errors 0  dropped 32  overruns 0  frame 0
+        TX packets 19075  bytes 1407337 (1.3 MiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 16436
+        inet 127.0.0.1  netmask 255.0.0.0
+        inet6 ::1  prefixlen 128  scopeid 0x10<host>
+        loop  txqueuelen 0  (Local Loopback)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+[root@localhost ~]# 
+#-----------------------------------------------------------#
+
+=> Get the IP address of regular guest <=
+
+NOTE: The regular guest is using host's bridge device 'br0'
+#-----------------------------------------------------------#
+[root@phy-host ~]# virt-cat regular-guest-f18 /var/log/messages | grep 'dhclient.*bound to'
+Feb 12 02:42:39 regular-guest-f18 dhclient[737]: bound to ww.xx.yyy.zzz -- renewal in 40588 seconds.
+Feb 12 03:02:14 regular-guest-f18 dhclient[750]: bound to ww.xx.yyy.zzz -- renewal in 41814 seconds.
+Feb 12 03:04:19 regular-guest-f18 dhclient[750]: bound to ww.xx.yyy.zzz-- renewal in 35326 seconds.
+[root@phy-host ~]# 
+#-----------------------------------------------------------#
+
+
+
+
+=> Some tests with libguestfs on <=
+#-----------------------------------------------------------#
+Run the below command on the host, and inside the first level guest.
+
+1/ $ time guestfish -a /dev/null run
+#-----------------------------------------------------------#
