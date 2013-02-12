@@ -1,0 +1,159 @@
+=> Inside the nested guest <=
+#-----------------------------------------------------------#
+[root@localhost ~]# hostnamectl set-hostname nested-guest-f18.englab.pnq.redhat.com
+Failed to issue method call: Read-only file system
+[root@localhost ~]# 
+[root@localhost ~]# touch foo
+touch: cannot touch ‘foo’: Read-only file system
+[root@localhost ~]# runlevel
+N 3
+[root@localhost ~]# 
+#-----------------------------------------------------------#
+
+[root@localhost ~]# touch foo
+touch: cannot touch ‘foo’: Read-only file system
+[root@localhost ~]# tail /var/log/messages 
+Feb 12 04:11:21 localhost systemd[1]: Started Update UTMP about System Runlevel Changes.
+Feb 12 04:11:21 localhost systemd[1]: Startup finished in 2s 892ms 310us (kernel) + 16s 505ms 637us (initrd) + 34s 622ms 869us (userspace) = 54s 20ms 816us.
+Feb 12 04:11:31 localhost systemd[1]: Starting Stop Read-Ahead Data Collection...
+Feb 12 04:11:31 localhost systemd[1]: Started Stop Read-Ahead Data Collection.
+Feb 12 04:22:31 localhost systemd-logind[414]: New session 2 of user root.
+Feb 12 04:22:31 localhost kernel: [  724.080207] end_request: I/O error, dev vda, sector 9553368
+Feb 12 04:22:31 localhost kernel: [  724.080922] Buffer I/O error on device dm-1, logical block 33467
+Feb 12 04:22:31 localhost kernel: [  724.080922] Buffer I/O error on device dm-1, logical block 33468
+Feb 12 04:22:31 localhost kernel: [  724.080922] EXT4-fs warning (device dm-1): ext4_end_bio:319: I/O error writing to inode 20335 (offset 241664 size 8192 starting block 33467)
+Feb 12 04:22:31 localhost auditd[412]: Audit daemon is suspending logging due to previously mentioned write error
+[root@localhost ~]# 
+
+[root@localhost /]# df -hT
+Filesystem              Type      Size  Used Avail Use% Mounted on
+rootfs                  rootfs    1.6G  628M  875M  42% /
+devtmpfs                devtmpfs  992M     0  992M   0% /dev
+tmpfs                   tmpfs    1002M     0 1002M   0% /dev/shm
+tmpfs                   tmpfs    1002M  1.2M 1001M   1% /run
+tmpfs                   tmpfs    1002M     0 1002M   0% /sys/fs/cgroup
+/dev/mapper/fedora-root ext4      1.6G  628M  875M  42% /
+tmpfs                   tmpfs    1002M     0 1002M   0% /tmp
+/dev/vda1               ext4      485M   48M  413M  11% /boot
+[root@localhost /]# 
+
+[root@localhost /]# ls -al /dev/mapper/fedora-root
+lrwxrwxrwx. 1 root root 7 Feb 12 04:10 /dev/mapper/fedora-root -> ../dm-1
+[root@localhost /]# 
+
+[root@regular-guestenglabpnqredhatcom ~]# virsh console nested-guest-f18
+Connected to domain nested-guest-f18
+Escape character is ^]
+
+(Repair:/# 
+(Repair:/# e2fsck /dev/mapper/fedora-root
+[  117.526342] end_request: I/O error, dev vda, sector 9286576
+[  117.526342] Buffer I/O error on device dm-1, logical block 118
+[  117.526342] lost page write due to I/O error on dm-1
+[  117.526342] end_request: I/O error, dev vda, sector 9286592
+[  117.526342] Buffer I/O error on device dm-1, logical block 120
+[  117.526342] lost page write due to I/O error on dm-1
+[  117.526342] end_request: I/O error, dev vda, sector 9286712
+[  117.526342] Buffer I/O error on device dm-1, logical block 135
+[  117.526342] lost page write due to I/O error on dm-1
+[  117.526342] end_request: I/O error, dev vda, sector 9286736
+[  117.526342] Buffer I/O error on device dm-1, logical block 138
+[  117.526342] lost page write due to I/O error on dm-1
+[  117.526342] end_request: I/O error, dev vda, sector 9287392
+[  117.526342] Buffer I/O error on device dm-1, logical block 220
+[  117.526342] lost page write due to I/O error on dm-1
+[  117.526342] end_request: I/O error, dev vda, sector 9293128
+[  117.526342] end_request: I/O error, dev vda, sector 9293256
+Superblock needs_recovery flag is clear, but journal has data.
+Run journal anyway<y>? yes
+[  124.942202] blk_update_request: 15 callbacks suppressed
+[  124.943117] end_request: I/O error, dev vda, sector 9285640
+[  124.943117] quiet_error: 17 callbacks suppressed
+[  124.943117] Buffer I/O error on device dm-1, logical block 1
+[  124.943117] lost page write due to I/O error on dm-1
+[  124.943117] end_request: I/O error, dev vda, sector 10858496
+[  124.943117] Buffer I/O error on device dm-1, logical block 196608
+[  124.943117] lost page write due to I/O error on dm-1
+[  125.035762] end_request: I/O error, dev vda, sector 9285632
+[  125.036228] Buffer I/O error on device dm-1, logical block 0
+[  125.036228] lost page write due to I/O error on dm-1
+e2fsck: unable to set superblock flags on /dev/mapper/fedora-root
+
+[  125.108603] end_request: I/O error, dev vda, sector 10858496
+[  125.109413] Buffer I/O error on device dm-1, logical block 196608
+[  125.109413] lost page write due to I/O error on dm-1
+
+/dev/mapper/fedora-root: ********** WARNING: Filesystem still has errors **********
+
+(Repair:/# e2fsck /dev/mapper/fedora-root
+
+
+
+
+
+
+
+
+
+
+[   13.861627] lost page write due to I/O error on dm-1
+[   13.861627] end_request: I/O error, dev vda, sector 9286592
+[   13.861627] Buffer I/O error on device dm-1, logical block 120
+[   13.861627] lost page write due to I/O error on dm-1
+[   13.861627] end_request: I/O error, dev vda, sector 9286712
+[   13.861627] Buffer I/O error on device dm-1, logical block 135
+[   13.861627] lost page write due to I/O error on dm-1
+[   13.861627] end_request: I/O error, dev vda, sector 9286736
+[   13.861627] Buffer I/O error on device dm-1, logical block 138
+[   13.861627] lost page write due to I/O error on dm-1
+[   13.861627] end_request: I/O error, dev vda, sector 9287392
+[   13.861627] Buffer I/O error on device dm-1, logical block 220
+[   13.861627] lost page write due to I/O error on dm-1
+[   13.861627] end_request: I/O error, dev vda, sector 9293128
+[   13.861627] end_request: I/O error, dev vda, sector 9293256
+[   14.163708] JBD2: recovery failed
+[   14.171021] EXT4-fs (dm-1): error loading journal
+dracut-initqueue[130]: mount: wrong fs type, bad option, bad superblock on /dev/mapper/fedora-root,
+dracut-initqueue[130]: missing codepage or helper program, or other error
+dracut-initqueue[130]: In some cases useful info is found in syslog - try
+dracut-initqueue[130]: dmesg | tail or so
+dracut-initqueue[130]: Warning: Failed to mount -t ext4 -o ro,ro /dev/mapper/fedora-root /sysroot
+dracut-initqueue[130]: Warning: *** An error occurred during the file system check.
+dracut-initqueue[130]: Warning: *** Dropping you to a shell; the system will try
+[  OK  ] Started Show Plymouth Boot Screen.
+[  OK  ] Reached target Basic System.
+dracut-initqueue[130]: mount: wrong fs type, bad option, bad superblock on /dev/mapper/fedora-root,
+dracut-initqueue[130]: missing codepage or helper program, or other error
+dracut-initqueue[130]: In some cases useful info is found in syslog - try
+dracut-initqueue[130]: dmesg | tail or so
+dracut-initqueue[130]: Warning: Failed to mount -t ext4 -o ro,ro /dev/mapper/fedora-root /sysroot
+dracut-initqueue[130]: Warning: *** An error occurred during the file system check.
+dracut-initqueue[130]: Warning: *** Dropping you to a shell; the system will try
+dracut-initqueue[130]: Warning:
+
+
+Entering emergency mode. Exit the shell to continue.
+Type "journalctl" to view system logs.
+
+(Repair:/# 
+#
+#-----------------------------------------------------------#
+
+
+=> Run 'virt-what' on L2 (nested-guest), L1 (guest hypervisor), L0 (physical host)<=
+#-----------------------------------------------------------#
+[root@regular-guestenglabpnqredhatcom ~]# virt-what
+kvm
+[root@regular-guestenglabpnqredhatcom ~]# 
+#-----------------------------------------------------------#
+[root@nested-guest-f18englabpnqredhatcom ~]# virt-what
+kvm
+[root@nested-guest-f18englabpnqredhatcom ~]# 
+#-----------------------------------------------------------#
+
+=> I/O activity test <=
+
+#-----------------------------------------------------------#
+find / -exec md5sum {} \; > /dev/null
+find / -xdev -exec md5sum {} \; > /dev/null
+#-----------------------------------------------------------#

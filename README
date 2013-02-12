@@ -1,0 +1,11 @@
+These xmls and simple scripts are for testing nested virtualization on Fedora-18
+
+
+- Notes on Intel & Nested KVM:
+    - http://kashyapc.wordpress.com/2012/07/28/nested-virtualization-with-intel-take-2-with-fedora-17/
+    - http://kashyapc.wordpress.com/2012/01/14/nested-virtualization-with-kvm-intel/
+
+- Notes on AMD & Nested KVM:
+    - http://kashyapc.wordpress.com/2012/01/18/nested-virtualization-with-kvm-and-amd/
+
+
